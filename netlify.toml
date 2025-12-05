@@ -15,8 +15,8 @@
 # - Fly.io: https://fly.io
 
 [build]
-  # No-op command - Netlify cannot host Streamlit apps
-  command = "echo 'This app should be deployed to Streamlit Cloud, not Netlify. See README.md for deployment instructions.'"
+  # Create a simple static page explaining this app should be on Streamlit Cloud
+  command = "echo 'Static page created - see index.html'"
   publish = "."
 
 [build.environment]
