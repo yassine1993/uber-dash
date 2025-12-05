@@ -1,0 +1,13 @@
+[build]
+  command = "pip install -r requirements.txt && streamlit run app.py --server.port=$PORT --server.address=0.0.0.0"
+  publish = "."
+
+[build.environment]
+  PYTHON_VERSION = "3.11"
+  PORT = "8501"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+

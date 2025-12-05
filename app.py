@@ -1,0 +1,517 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from io import StringIO
+import random
+import os
+
+# Page configuration
+st.set_page_config(
+    page_title="Uber Marrakesh Ops",
+    page_icon="🚗",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for Uber-style black/grey theme
+st.markdown("""
+    <style>
+    .main {
+        background-color: #000000;
+    }
+    .stApp {
+        background-color: #000000;
+    }
+    .metric-card {
+        background-color: #1a1a1a;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #333333;
+    }
+    h1 {
+        color: #ffffff;
+    }
+    h2, h3 {
+        color: #ffffff;
+    }
+    .stMarkdown {
+        color: #ffffff;
+    }
+    .stDataFrame {
+        background-color: #1a1a1a;
+    }
+    .info-box {
+        background-color: #1a1a1a;
+        padding: 25px;
+        border-radius: 10px;
+        border: 1px solid #333333;
+        margin: 20px 0;
+    }
+    .feature-box {
+        background-color: #1a1a1a;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #333333;
+        margin: 15px 0;
+    }
+    .button-container {
+        text-align: center;
+        margin: 30px 0;
+    }
+    .attention-metric {
+        color: #ff4444 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Initialize session state
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = False
+if 'df' not in st.session_state:
+    st.session_state.df = None
+if 'use_demo' not in st.session_state:
+    st.session_state.use_demo = False
+
+# Demo data generation function
+def get_demo_data():
+    """Generate realistic dummy data for the dashboard"""
+    stations = [
+        "Bab Doukkala", "Airport", "Gueliz", "Medina", "Hivernage",
+        "Agdal", "Hay Riad", "Sidi Youssef Ben Ali", "Massira", "Targa"
+    ]
+    
+    statuses = ["Contacted", "Tea_Station_Visit", "Docs_Submitted", "Training_In_Progress", "Active"]
+    
+    # Friction reasons based on status
+    friction_mapping = {
+        "Contacted": ["Not_Interested", "Trust_Issue", "None"],
+        "Tea_Station_Visit": ["Not_Interested", "Trust_Issue", "None"],
+        "Docs_Submitted": ["Permit_Scan_Fail", "CIN_Expired", "None"],
+        "Training_In_Progress": ["GPS_Confusion", "Failed_Tech_Quiz", "Skipped_Session", "None"],
+        "Active": ["None"]
+    }
+    
+    # Weight the data to be more realistic
+    status_weights = [0.20, 0.20, 0.25, 0.20, 0.15]  # Distribution across all statuses
+    
+    data = []
+    for i in range(800):
+        station = random.choice(stations)
+        status = random.choices(statuses, weights=status_weights)[0]
+        
+        # Assign friction reason based on status
+        available_frictions = friction_mapping[status]
+        friction_weights = [0.30, 0.30, 0.20, 0.20] if len(available_frictions) == 4 else [0.35, 0.35, 0.30]
+        friction_reason = random.choices(available_frictions, weights=friction_weights[:len(available_frictions)])[0]
+        
+        data.append({
+            "Station": station,
+            "Status": status,
+            "Friction_Reason": friction_reason
+        })
+    
+    return pd.DataFrame(data)
+
+# CSV Template generation function
+def get_csv_template():
+    """Generate a CSV template with example rows"""
+    template_data = {
+        "Station": ["Bab Doukkala", "Airport", "Gueliz", "Medina", "Hivernage", "Agdal"],
+        "Status": ["Contacted", "Tea_Station_Visit", "Docs_Submitted", "Training_In_Progress", "Active", "Contacted"],
+        "Friction_Reason": ["None", "Permit_Scan_Fail", "CIN_Expired", "GPS_Confusion", "None", "Not_Interested"]
+    }
+    return pd.DataFrame(template_data)
+
+# Logo and Header
+logo_paths = ['logo.png', 'uber.png', 'Uber.png', 'logo.PNG', 'uber.PNG']
+logo_found = None
+
+for path in logo_paths:
+    if os.path.exists(path):
+        logo_found = path
+        break
+
+    # Landing Page
+if not st.session_state.data_loaded:
+    # Header
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if logo_found:
+            st.image(logo_found, width=150, use_container_width=False)
+        st.markdown("<h1 style='text-align: center; color: #ffffff; margin-bottom: 5px;'>Uber Marrakesh Ops</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #cccccc; margin-top: 0; margin-bottom: 20px;'>Ambassador Performance & Friction Tracker</h3>", unsafe_allow_html=True)
+        
+        # Status Definitions - Always Visible
+        st.markdown("""
+        <div style='background-color: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333333; margin: 20px 0;'>
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>ℹ️ Operational Status Definitions</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Use native Streamlit markdown for content
+        st.markdown("**Contacted:** An Ambassador has approached the driver at a taxi stand, pitched the value proposition, and logged their phone number. *Goal: Move them to the Tea Station.*")
+        st.markdown("")
+        st.markdown("**Tea Station Visit:** The driver has physically sat down at a Greenlight Hub/Tent. This indicates \"High Intent\" (they invested time to drink tea and listen). *Goal: Start the document upload process.*")
+        st.markdown("")
+        st.markdown("**Docs Submitted:** All legal documents (Permit de Confiance, License, CIN, Carte Grise) have been scanned and uploaded to the system. *Goal: Verify documents and start tech training.*")
+        st.markdown("")
+        st.markdown("**Training In Progress:** Documents are valid, but the driver is currently undergoing the \"Tech Literacy\" module (learning to accept rides, use GPS, and understand safety guidelines). *Goal: Pass the \"First Trip\" simulation.*")
+        st.markdown("")
+        st.markdown("**Active:** The driver has successfully completed their first paid trip on the platform within the last 7 days. *Goal: Retention and \"Captain's Club\" entry.*")
+        
+        st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
+    
+    # Welcome Section
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col2:
+        st.markdown("""
+        <div class="info-box">
+            <h2 style='color: #ffffff; text-align: center; margin-bottom: 20px;'>Welcome to the Ambassador Performance & Friction Tracker</h2>
+            <p style='color: #cccccc; font-size: 18px; line-height: 1.6; text-align: center;'>
+                Track driver onboarding progress across Marrakesh operations. Monitor conversion funnels, 
+                identify friction points, and optimize the journey from initial contact to active driver status.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # What We Track Section
+    st.markdown("<h2 style='color: #ffffff; text-align: center; margin-top: 30px;'>What We Track</h2>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-box">
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>📍 Station Performance</h3>
+            <p style='color: #cccccc; line-height: 1.6;'>
+                Monitor driver volume and conversion rates across all Marrakesh stations. 
+                Identify which stations are performing best and where improvements are needed.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="feature-box">
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>📊 Driver Status Pipeline</h3>
+            <p style='color: #cccccc; line-height: 1.6;'>
+                Track drivers through the complete onboarding journey from initial contact 
+                to active status, including the critical training phase.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-box">
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>⚠️ Friction Analysis</h3>
+            <p style='color: #cccccc; line-height: 1.6;'>
+                Identify friction points at each stage:
+                <ul style='color: #cccccc; line-height: 1.8;'>
+                    <li><strong>Contact:</strong> Not Interested, Trust Issues</li>
+                    <li><strong>Docs:</strong> Permit Scan Fail, CIN Expired</li>
+                    <li><strong>Training:</strong> GPS Confusion, Failed Tech Quiz, Skipped Session</li>
+                </ul>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="feature-box">
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>🎯 Key Metrics</h3>
+            <p style='color: #cccccc; line-height: 1.6;'>
+                Real-time insights into:
+                <ul style='color: #cccccc; line-height: 1.8;'>
+                    <li>Total leads and active drivers</li>
+                    <li>Drivers in training (needs attention)</li>
+                    <li>Conversion rates by station</li>
+                    <li>Top friction reasons</li>
+                </ul>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color: #333333; margin: 40px 0;'>", unsafe_allow_html=True)
+    
+    # Data Selection Section
+    st.markdown("<h2 style='color: #ffffff; text-align: center; margin-top: 30px;'>Get Started</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #cccccc; text-align: center; font-size: 16px; margin-bottom: 30px;'>Choose how you'd like to load data to begin analyzing</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        # CSV Format Information
+        with st.expander("📋 CSV Format Requirements", expanded=True):
+            st.markdown("""
+            <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333333;'>
+                <h4 style='color: #ffffff; margin-bottom: 10px;'>Required Columns:</h4>
+                <ul style='color: #cccccc; line-height: 1.8;'>
+                    <li><strong>Station</strong> - Station name (e.g., "Bab Doukkala", "Airport", "Gueliz")</li>
+                    <li><strong>Status</strong> - Driver status: <code>Contacted</code>, <code>Tea_Station_Visit</code>, <code>Docs_Submitted</code>, <code>Training_In_Progress</code>, or <code>Active</code></li>
+                    <li><strong>Friction_Reason</strong> - Friction reason based on status:
+                        <ul style='margin-top: 5px;'>
+                            <li>Contact/Tea Station: <code>Not_Interested</code>, <code>Trust_Issue</code>, <code>None</code></li>
+                            <li>Docs: <code>Permit_Scan_Fail</code>, <code>CIN_Expired</code>, <code>None</code></li>
+                            <li>Training: <code>GPS_Confusion</code>, <code>Failed_Tech_Quiz</code>, <code>Skipped_Session</code>, <code>None</code></li>
+                            <li>Active: <code>None</code></li>
+                        </ul>
+                    </li>
+                </ul>
+                <p style='color: #cccccc; margin-top: 15px;'>
+                    <strong>Note:</strong> Column names are case-sensitive and must match exactly.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Download Template Button
+            template_df = get_csv_template()
+            template_csv = template_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download CSV Template",
+                data=template_csv,
+                file_name="marrakesh_friction_template.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="Download a template CSV file with example data and correct format"
+            )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # File Upload Section
+        st.markdown("### 📁 Upload Your Data")
+        uploaded_file = st.file_uploader(
+            "Upload CSV File",
+            type=['csv'],
+            help="Upload a CSV file with columns: Station, Status, Friction_Reason",
+            key="file_uploader"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                # Validate required columns
+                required_cols = ['Station', 'Status', 'Friction_Reason']
+                if not all(col in df.columns for col in required_cols):
+                    st.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
+                    st.info(f"Your CSV has columns: {', '.join(df.columns.tolist())}")
+                else:
+                    st.success(f"✅ File loaded successfully! Found {len(df)} rows.")
+                    if st.button("🚀 Go to Dashboard", use_container_width=True, type="primary"):
+                        st.session_state.df = df
+                        st.session_state.use_demo = False
+                        st.session_state.data_loaded = True
+                        st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error reading CSV file: {str(e)}")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #666666;'>— OR —</p>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Demo Data Section
+        st.markdown("### 📊 Use Demo Data")
+        st.markdown("<p style='color: #cccccc;'>Explore the dashboard with realistic sample data (800 rows)</p>", unsafe_allow_html=True)
+        
+        if st.button("🎮 Load Demo Data", use_container_width=True, type="secondary"):
+            df = get_demo_data()
+            st.session_state.df = df
+            st.session_state.use_demo = True
+            st.session_state.data_loaded = True
+            st.rerun()
+
+# Dashboard Page
+else:
+    df = st.session_state.df
+    
+    # Header with back button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if logo_found:
+            st.image(logo_found, width=150, use_container_width=False)
+        st.markdown("<h1 style='text-align: center; color: #ffffff; margin-bottom: 5px;'>Uber Marrakesh Ops</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #cccccc; margin-top: 0; margin-bottom: 20px;'>Ambassador Performance & Friction Tracker</h3>", unsafe_allow_html=True)
+        
+        # Status Definitions - Always Visible
+        st.markdown("""
+        <div style='background-color: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333333; margin: 20px 0;'>
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>ℹ️ Operational Status Definitions</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Use native Streamlit markdown for content
+        st.markdown("**Contacted:** An Ambassador has approached the driver at a taxi stand, pitched the value proposition, and logged their phone number. *Goal: Move them to the Tea Station.*")
+        st.markdown("")
+        st.markdown("**Tea Station Visit:** The driver has physically sat down at a Greenlight Hub/Tent. This indicates \"High Intent\" (they invested time to drink tea and listen). *Goal: Start the document upload process.*")
+        st.markdown("")
+        st.markdown("**Docs Submitted:** All legal documents (Permit de Confiance, License, CIN, Carte Grise) have been scanned and uploaded to the system. *Goal: Verify documents and start tech training.*")
+        st.markdown("")
+        st.markdown("**Training In Progress:** Documents are valid, but the driver is currently undergoing the \"Tech Literacy\" module (learning to accept rides, use GPS, and understand safety guidelines). *Goal: Pass the \"First Trip\" simulation.*")
+        st.markdown("")
+        st.markdown("**Active:** The driver has successfully completed their first paid trip on the platform within the last 7 days. *Goal: Retention and \"Captain's Club\" entry.*")
+        
+        st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
+    
+    # Sidebar with data info and reset option
+    with st.sidebar:
+        st.markdown("<h2 style='color: #ffffff;'>Data Source</h2>", unsafe_allow_html=True)
+        
+        if st.session_state.use_demo:
+            st.info("📊 Using Demo Data")
+            st.caption(f"Total rows: {len(df):,}")
+        else:
+            st.success("📁 Using Uploaded CSV")
+            st.caption(f"Total rows: {len(df):,}")
+        
+        st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
+        
+        if st.button("🔄 Start Over", use_container_width=True):
+            st.session_state.data_loaded = False
+            st.session_state.df = None
+            st.session_state.use_demo = False
+            st.rerun()
+    
+    # Main Dashboard
+    # KPI Metrics
+    st.markdown("<h2 style='color: #ffffff; margin-top: 20px;'>Key Performance Indicators</h2>", unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_leads = len(df)
+    in_training = len(df[df['Status'] == 'Training_In_Progress'])
+    active_drivers = len(df[df['Status'] == 'Active'])
+    
+    # Get top friction reason (excluding 'None')
+    friction_counts = df[df['Friction_Reason'] != 'None']['Friction_Reason'].value_counts()
+    top_friction = friction_counts.index[0] if len(friction_counts) > 0 else "None"
+    
+    with col1:
+        st.metric(
+            label="Total Leads",
+            value=f"{total_leads:,}",
+            delta=None
+        )
+    
+    with col2:
+        # In Training - Red/Attention color
+        st.markdown(f"""
+        <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 2px solid #ff4444;'>
+            <div style='color: #cccccc; font-size: 14px; margin-bottom: 5px;'>In Training</div>
+            <div style='color: #ff4444; font-size: 32px; font-weight: bold;'>{in_training:,}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.metric(
+            label="Active Drivers",
+            value=f"{active_drivers:,}",
+            delta=None
+        )
+    
+    with col4:
+        st.metric(
+            label="#1 Friction Reason",
+            value=top_friction.replace('_', ' '),
+            delta=None
+        )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Chart 1: Funnel Volume by Station (colored by Status)
+    st.markdown("<h2 style='color: #ffffff;'>Funnel Volume by Station</h2>", unsafe_allow_html=True)
+    
+    station_status_counts = df.groupby(['Station', 'Status']).size().reset_index(name='Count')
+    
+    fig1 = px.bar(
+        station_status_counts,
+        x='Station',
+        y='Count',
+        color='Status',
+        color_discrete_map={
+            'Contacted': '#636EFA',
+            'Tea_Station_Visit': '#EF553B',
+            'Docs_Submitted': '#FFA15A',
+            'Training_In_Progress': '#FF6B35',  # Distinct Orange color
+            'Active': '#00CC96'
+        },
+        title="Funnel Volume by Station (Colored by Status)",
+        labels={'Count': 'Number of Drivers', 'Station': 'Station'}
+    )
+    fig1.update_layout(
+        plot_bgcolor='#1a1a1a',
+        paper_bgcolor='#000000',
+        font_color='#ffffff',
+        title_font_color='#ffffff',
+        xaxis=dict(gridcolor='#333333'),
+        yaxis=dict(gridcolor='#333333'),
+        legend=dict(bgcolor='#1a1a1a', bordercolor='#333333')
+    )
+    
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Chart 2: Top Friction Reasons (horizontal bar, excluding 'None')
+    st.markdown("<h2 style='color: #ffffff;'>Top Friction Reasons</h2>", unsafe_allow_html=True)
+    
+    friction_df = df[df['Friction_Reason'] != 'None']
+    friction_counts = friction_df['Friction_Reason'].value_counts().reset_index()
+    friction_counts.columns = ['Friction_Reason', 'Count']
+    friction_counts['Friction_Reason'] = friction_counts['Friction_Reason'].str.replace('_', ' ')
+    
+    fig2 = px.bar(
+        friction_counts,
+        x='Count',
+        y='Friction_Reason',
+        orientation='h',
+        title="Top Friction Reasons (Excluding None)",
+        labels={'Count': 'Number of Drivers', 'Friction_Reason': 'Friction Reason'},
+        color='Count',
+        color_continuous_scale='Greys'
+    )
+    fig2.update_layout(
+        plot_bgcolor='#1a1a1a',
+        paper_bgcolor='#000000',
+        font_color='#ffffff',
+        title_font_color='#ffffff',
+        xaxis=dict(gridcolor='#333333'),
+        yaxis=dict(gridcolor='#333333'),
+        showlegend=False
+    )
+    fig2.update_traces(marker_color='#666666')
+    
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Action List: Drivers in Training_In_Progress
+    st.markdown("<h2 style='color: #ffffff;'>Action List: Drivers In Training</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #cccccc; margin-bottom: 15px;'>Drivers currently in training who need ambassador support to complete the tutorial</p>", unsafe_allow_html=True)
+    
+    training_df = df[df['Status'] == 'Training_In_Progress'].copy()
+    training_df = training_df[['Station', 'Status', 'Friction_Reason']].reset_index(drop=True)
+    training_df['Friction_Reason'] = training_df['Friction_Reason'].str.replace('_', ' ')
+    
+    if len(training_df) > 0:
+        st.dataframe(
+            training_df,
+            use_container_width=True,
+            hide_index=True
+        )
+        st.caption(f"Total drivers in training requiring action: {len(training_df)}")
+    else:
+        st.info("No drivers currently in training.")
+    
+    # Download Report Button
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Report (CSV)",
+            data=csv,
+            file_name="marrakesh_friction_report.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
