@@ -1,13 +1,23 @@
+# NOTE: Netlify is NOT suitable for hosting Streamlit apps
+# Streamlit requires a persistent server process, which Netlify does not support.
+# Netlify is designed for static sites and serverless functions, not long-running Python servers.
+#
+# RECOMMENDED: Deploy to Streamlit Cloud instead:
+# 1. Go to https://share.streamlit.io
+# 2. Connect your GitHub repository
+# 3. Deploy with one click (free)
+#
+# Alternative platforms for Streamlit:
+# - Streamlit Cloud: https://streamlit.io/cloud (Recommended - Free)
+# - Render: https://render.com
+# - Railway: https://railway.app
+# - Heroku: https://heroku.com
+# - Fly.io: https://fly.io
+
 [build]
-  command = "pip install -r requirements.txt && streamlit run app.py --server.port=$PORT --server.address=0.0.0.0"
+  # No-op command - Netlify cannot host Streamlit apps
+  command = "echo 'This app should be deployed to Streamlit Cloud, not Netlify. See README.md for deployment instructions.'"
   publish = "."
 
 [build.environment]
   PYTHON_VERSION = "3.11"
-  PORT = "8501"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
