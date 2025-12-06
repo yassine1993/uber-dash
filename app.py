@@ -919,7 +919,19 @@ else:
         for source in df['Lead_Source'].unique():
             source_df = df[df['Lead_Source'] == source]
             source_total = len(source_df)
-            source_active = len(source_df[source_df['Status'] == 'Active'])
+            
+            # In Snapshot View, use cooked proportions for consistency
+            if not st.session_state.cohort_view:
+                # Use different conversion rates by source (Referral higher)
+                if 'Referral' in source:
+                    source_active = int(source_total * 0.53)  # 53% for Referral
+                elif 'Physical' in source:
+                    source_active = int(source_total * 0.20)  # 20% for Physical
+                else:
+                    source_active = int(source_total * 0.15)  # 15% for Performance Marketing
+            else:
+                source_active = len(source_df[source_df['Status'] == 'Active'])
+            
             source_conversion = (source_active / source_total * 100) if source_total > 0 else 0
             conversion_by_source.append({
                 'Lead_Source': source.replace('_', ' '),
@@ -974,9 +986,15 @@ else:
         ambassador_metrics = []
         for ambassador in df['Ambassador'].unique():
             amb_df = df[df['Ambassador'] == ambassador]
-            total_leads = len(amb_df)
-            active_drivers = len(amb_df[amb_df['Status'] == 'Active'])
-            activation_pct = (active_drivers / total_leads * 100) if total_leads > 0 else 0
+            amb_total_leads = len(amb_df)
+            
+            # In Snapshot View, use cooked proportions for consistency
+            if not st.session_state.cohort_view:
+                amb_active_drivers = int(amb_total_leads * 0.25)  # 25% activation
+            else:
+                amb_active_drivers = len(amb_df[amb_df['Status'] == 'Active'])
+            
+            activation_pct = (amb_active_drivers / amb_total_leads * 100) if amb_total_leads > 0 else 0
             
             # Calculate avg friction resolution time (mock: based on status distribution)
             # In real app, this would be actual time data
@@ -985,7 +1003,7 @@ else:
             
             ambassador_metrics.append({
                 'Ambassador Name': ambassador,
-                'Leads Sourced': total_leads,
+                'Leads Sourced': amb_total_leads,
                 'Activation %': activation_pct,
                 'Avg Friction Resolution Time (Hours)': round(avg_resolution_hours, 1)
             })
@@ -1035,15 +1053,32 @@ else:
             # Generate daily active drivers data
             daily_data = []
             end_date = datetime.now()
-            for i in range(30):
-                date = end_date - timedelta(days=29-i)
-                date_str = date.strftime("%Y-%m-%d")
-                # Count drivers who became active on or before this date
-                active_on_date = len(df[(df['Contact_Date'] <= date) & (df['Status'] == 'Active')])
-                daily_data.append({
-                    'Date': date_str,
-                    'Active Drivers': active_on_date
-                })
+            
+            # In Snapshot View, use cooked data for consistency
+            if not st.session_state.cohort_view:
+                # Use target active drivers (25% of total)
+                target_active = int(total_leads * 0.25)
+                # Simulate gradual growth over 30 days
+                for i in range(30):
+                    date = end_date - timedelta(days=29-i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    # Gradual growth: start at ~60% of target, reach 100% by today
+                    progress = (i + 1) / 30
+                    active_on_date = int(target_active * (0.6 + 0.4 * progress))
+                    daily_data.append({
+                        'Date': date_str,
+                        'Active Drivers': active_on_date
+                    })
+            else:
+                # Cohort View: Use actual data
+                for i in range(30):
+                    date = end_date - timedelta(days=29-i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    active_on_date = len(df[(df['Contact_Date'] <= date) & (df['Status'] == 'Active')])
+                    daily_data.append({
+                        'Date': date_str,
+                        'Active Drivers': active_on_date
+                    })
             
             daily_df = pd.DataFrame(daily_data)
             daily_df['Date'] = pd.to_datetime(daily_df['Date'])
@@ -1076,18 +1111,45 @@ else:
             # Generate friction trends
             friction_trends = []
             end_date = datetime.now()
-            friction_types = df[df['Friction_Reason'] != 'None']['Friction_Reason'].unique()
             
-            for i in range(30):
-                date = end_date - timedelta(days=29-i)
-                date_str = date.strftime("%Y-%m-%d")
-                for friction_type in friction_types:
-                    count = len(df[(df['Contact_Date'] <= date) & (df['Friction_Reason'] == friction_type)])
-                    friction_trends.append({
-                        'Date': date_str,
-                        'Friction Type': friction_type.replace('_', ' '),
-                        'Volume': count
-                    })
+            if not st.session_state.cohort_view:
+                # Snapshot View: Use cooked proportions for consistency
+                # Get friction distribution from target sequence
+                target_sequence = [1.0, 0.75, 0.5625, 0.375, 0.3125, 0.25]
+                stuck_total = int(total_leads * (1 - target_sequence[5]))  # Non-active drivers
+                
+                # Common friction types
+                friction_types = ['Permit_Scan_Fail', 'CIN_Expired', 'GPS_Confusion', 'Failed_Tech_Quiz', 
+                                'Skipped_Session', 'Not_Interested', 'Trust_Issue']
+                friction_weights = [0.20, 0.15, 0.18, 0.12, 0.10, 0.15, 0.10]  # Distribution
+                
+                for i in range(30):
+                    date = end_date - timedelta(days=29-i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    # Gradual accumulation over time
+                    progress = (i + 1) / 30
+                    current_stuck = int(stuck_total * progress)
+                    
+                    for j, friction_type in enumerate(friction_types):
+                        count = int(current_stuck * friction_weights[j])
+                        friction_trends.append({
+                            'Date': date_str,
+                            'Friction Type': friction_type.replace('_', ' '),
+                            'Volume': count
+                        })
+            else:
+                # Cohort View: Use actual data
+                friction_types = df[df['Friction_Reason'] != 'None']['Friction_Reason'].unique()
+                for i in range(30):
+                    date = end_date - timedelta(days=29-i)
+                    date_str = date.strftime("%Y-%m-%d")
+                    for friction_type in friction_types:
+                        count = len(df[(df['Contact_Date'] <= date) & (df['Friction_Reason'] == friction_type)])
+                        friction_trends.append({
+                            'Date': date_str,
+                            'Friction Type': friction_type.replace('_', ' '),
+                            'Volume': count
+                        })
             
             friction_trends_df = pd.DataFrame(friction_trends)
             friction_trends_df['Date'] = pd.to_datetime(friction_trends_df['Date'])
