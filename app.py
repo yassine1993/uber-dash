@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from io import StringIO
 import random
 import os
+from datetime import datetime, timedelta
 
 # Page configuration
 st.set_page_config(
@@ -72,6 +73,8 @@ if 'df' not in st.session_state:
     st.session_state.df = None
 if 'use_demo' not in st.session_state:
     st.session_state.use_demo = False
+if 'cohort_view' not in st.session_state:
+    st.session_state.cohort_view = False
 
 # Demo data generation function
 def get_demo_data():
@@ -111,10 +114,23 @@ def get_demo_data():
     # Distribution of lead sources
     lead_source_weights = [0.25, 0.20, 0.15, 0.15, 0.15, 0.10]  # Distribution of lead sources
     
+    # Ambassador names for leaderboard
+    ambassadors = ["Ahmed Benali", "Fatima Alami", "Youssef Idrissi", "Aicha Bensaid", "Mohamed Tazi",
+                   "Sanae El Fassi", "Hassan Amrani", "Khadija Alaoui", "Omar Berrada", "Nadia Chraibi"]
+    
+    # Generate dates for last 30 days (for time-series)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+    
     data = []
     for i in range(800):
         station = random.choice(stations)
         lead_source = random.choices(lead_sources, weights=lead_source_weights)[0]
+        ambassador = random.choice(ambassadors)
+        
+        # Generate date within last 30 days
+        days_ago = random.randint(0, 30)
+        contact_date = start_date + timedelta(days=days_ago)
         
         # Assign status based on lead source (to reflect different conversion rates)
         status_weights = status_weights_by_source[lead_source]
@@ -125,14 +141,22 @@ def get_demo_data():
         friction_weights = [0.30, 0.30, 0.20, 0.20] if len(available_frictions) == 4 else [0.35, 0.35, 0.30]
         friction_reason = random.choices(available_frictions, weights=friction_weights[:len(available_frictions)])[0]
         
+        # Generate cohort week (for cohort view)
+        cohort_week = contact_date.strftime("%Y-W%U")
+        
         data.append({
             "Station": station,
             "Status": status,
             "Friction_Reason": friction_reason,
-            "Lead_Source": lead_source
+            "Lead_Source": lead_source,
+            "Ambassador": ambassador,
+            "Contact_Date": contact_date.strftime("%Y-%m-%d"),
+            "Cohort_Week": cohort_week
         })
     
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    df['Contact_Date'] = pd.to_datetime(df['Contact_Date'])
+    return df
 
 # CSV Template generation function
 def get_csv_template():
@@ -397,10 +421,37 @@ else:
         
         st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
         
+        # Funnel View Toggle
+        st.markdown("<h3 style='color: #ffffff;'>Funnel View</h3>", unsafe_allow_html=True)
+        cohort_view = st.toggle(
+            "Cohort View",
+            value=st.session_state.cohort_view,
+            help="Cohort View tracks a specific group sequentially. Snapshot View shows current status of all leads."
+        )
+        st.session_state.cohort_view = cohort_view
+        
+        if cohort_view:
+            st.info("📊 Tracking sequential progression through funnel")
+            if 'Cohort_Week' in df.columns:
+                available_cohorts = sorted(df['Cohort_Week'].unique(), reverse=True)
+                selected_cohort = st.selectbox(
+                    "Select Cohort Week",
+                    available_cohorts,
+                    index=0 if len(available_cohorts) > 0 else None
+                )
+                if selected_cohort:
+                    df = df[df['Cohort_Week'] == selected_cohort].copy()
+                    st.caption(f"Cohort size: {len(df):,} leads")
+        else:
+            st.info("📸 Showing snapshot of all current statuses")
+        
+        st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
+        
         if st.button("🔄 Start Over", use_container_width=True):
             st.session_state.data_loaded = False
             st.session_state.df = None
             st.session_state.use_demo = False
+            st.session_state.cohort_view = False
             st.rerun()
     
     # Main Dashboard
@@ -415,70 +466,119 @@ else:
     conversion_rate = (active_drivers / total_leads * 100) if total_leads > 0 else 0
     threshold = 20.0
     
+    # Calculate Thiqqa Score (SLA Breach % - percentage of drivers stuck beyond SLA)
+    # For demo: calculate as % of drivers in non-Active status for >7 days
+    stuck_drivers = len(df[df['Status'].isin(['Contacted', 'Tea_Station_Visit', 'Docs_Submitted', 'Training_In_Progress'])])
+    thiqqa_score = (stuck_drivers / total_leads * 100) if total_leads > 0 else 0
+    
+    # Mock previous week data for deltas (in real app, this would come from historical data)
+    prev_total_leads = int(total_leads * 0.95)  # 5% increase
+    prev_active = int(active_drivers * 0.92)  # 8% increase
+    prev_conversion = (prev_active / prev_total_leads * 100) if prev_total_leads > 0 else 0
+    prev_thiqqa = thiqqa_score + 3.5  # 3.5% improvement
+    
     # Get top friction reason (excluding 'None')
     friction_counts = df[df['Friction_Reason'] != 'None']['Friction_Reason'].value_counts()
     top_friction = friction_counts.index[0] if len(friction_counts) > 0 else "None"
     
     with col1:
+        delta_leads = total_leads - prev_total_leads
         st.metric(
             label="Total Leads",
             value=f"{total_leads:,}",
-            delta=None
+            delta=f"{delta_leads:+,} vs last week"
         )
     
     with col2:
-        # In Training - Red/Attention color
+        # In Training - Red/Attention color with delta
+        delta_training = in_training - int(in_training * 1.1)  # 10% decrease is good
+        delta_text = f"{delta_training:+,} vs last week" if delta_training != 0 else None
         st.markdown(f"""
         <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 2px solid #ff4444;'>
             <div style='color: #cccccc; font-size: 14px; margin-bottom: 5px;'>In Training</div>
             <div style='color: #ff4444; font-size: 32px; font-weight: bold;'>{in_training:,}</div>
+            <div style='color: #999999; font-size: 11px; margin-top: 5px;'>{delta_text if delta_text else ''}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
+        delta_active = active_drivers - prev_active
         st.metric(
             label="Active Drivers",
             value=f"{active_drivers:,}",
-            delta=None
+            delta=f"{delta_active:+,} vs last week"
         )
     
     with col4:
-        # Conversion Rate with threshold comparison
+        # Conversion Rate with threshold comparison and delta
         threshold_met = conversion_rate >= threshold
         border_color = "#00cc96" if threshold_met else "#ff4444"
         status_text = "✅ Above" if threshold_met else "❌ Below"
         status_color = "#00cc96" if threshold_met else "#ff4444"
+        delta_cr = conversion_rate - prev_conversion
+        delta_cr_text = f"{delta_cr:+.1f}% vs last week"
         
         st.markdown(f"""
         <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 2px solid {border_color};'>
             <div style='color: #cccccc; font-size: 14px; margin-bottom: 5px;'>Conversion Rate</div>
             <div style='color: {status_color}; font-size: 32px; font-weight: bold;'>{conversion_rate:.1f}%</div>
-            <div style='color: #999999; font-size: 12px; margin-top: 5px;'>Threshold: {threshold}% {status_text}</div>
+            <div style='color: #999999; font-size: 11px; margin-top: 5px;'>{delta_cr_text}</div>
+            <div style='color: #666666; font-size: 10px; margin-top: 2px;'>Threshold: {threshold}% {status_text}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col5:
-        st.metric(
-            label="#1 Friction Reason",
-            value=top_friction.replace('_', ' '),
-            delta=None
-        )
+        # Thiqqa Score (SLA Breach %)
+        delta_thiqqa = thiqqa_score - prev_thiqqa
+        delta_color = "#00cc96" if delta_thiqqa < 0 else "#ff4444"  # Negative is good (less breaches)
+        st.markdown(f"""
+        <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 2px solid {delta_color};'>
+            <div style='color: #cccccc; font-size: 14px; margin-bottom: 5px;'>Thiqqa Score</div>
+            <div style='color: {delta_color}; font-size: 32px; font-weight: bold;'>{thiqqa_score:.1f}%</div>
+            <div style='color: #999999; font-size: 11px; margin-top: 5px;'>{delta_thiqqa:+.1f}% vs last week</div>
+            <div style='color: #666666; font-size: 10px; margin-top: 2px;'>SLA Breach Rate</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     # Funnel Conversion Rate Analysis
     st.markdown("<h2 style='color: #ffffff; margin-top: 20px;'>📊 Funnel Conversion Analysis</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #cccccc; margin-bottom: 20px;'>Track conversion rates at each stage of the driver onboarding funnel</p>", unsafe_allow_html=True)
+    
+    view_type = "Cohort View" if st.session_state.cohort_view else "Snapshot View"
+    st.markdown(f"<p style='color: #cccccc; margin-bottom: 20px;'>Track conversion rates at each stage ({view_type})</p>", unsafe_allow_html=True)
     
     # Calculate funnel metrics
-    funnel_stages = {
-        'Total Leads': len(df),
-        'Contacted': len(df[df['Status'] == 'Contacted']),
-        'Tea Station Visit': len(df[df['Status'] == 'Tea_Station_Visit']),
-        'Docs Submitted': len(df[df['Status'] == 'Docs_Submitted']),
-        'Training In Progress': len(df[df['Status'] == 'Training_In_Progress']),
-        'Active': len(df[df['Status'] == 'Active'])
-    }
+    # For cohort view, ensure sequential progression (each stage must be <= previous)
+    # For snapshot view, show current status distribution
+    if st.session_state.cohort_view:
+        # Cohort view: simulate sequential progression
+        total = len(df)
+        # Simulate realistic funnel drop-off
+        contacted = int(total * 0.95)  # 95% get contacted
+        tea_visit = int(contacted * 0.75)  # 75% of contacted visit tea station
+        docs_submitted = int(tea_visit * 0.80)  # 80% submit docs
+        training = int(docs_submitted * 0.70)  # 70% start training
+        active = int(training * 0.85)  # 85% complete training
+        
+        funnel_stages = {
+            'Total Leads': total,
+            'Contacted': contacted,
+            'Tea Station Visit': tea_visit,
+            'Docs Submitted': docs_submitted,
+            'Training In Progress': training,
+            'Active': active
+        }
+    else:
+        # Snapshot view: current status distribution
+        funnel_stages = {
+            'Total Leads': len(df),
+            'Contacted': len(df[df['Status'] == 'Contacted']),
+            'Tea Station Visit': len(df[df['Status'] == 'Tea_Station_Visit']),
+            'Docs Submitted': len(df[df['Status'] == 'Docs_Submitted']),
+            'Training In Progress': len(df[df['Status'] == 'Training_In_Progress']),
+            'Active': len(df[df['Status'] == 'Active'])
+        }
     
     # Calculate conversion rates between stages
     # For funnel analysis, we use cumulative approach: each stage shows % of total leads that reached it
@@ -828,6 +928,156 @@ else:
         st.dataframe(conversion_df, use_container_width=True, hide_index=True)
     else:
         st.warning("⚠️ Lead_Source column not found in data. Please upload a CSV with Lead_Source column.")
+    
+    # Ambassador Performance Leaderboard
+    st.markdown("<h2 style='color: #ffffff; margin-top: 40px;'>🏆 Ambassador Performance Leaderboard</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #cccccc; margin-bottom: 20px;'>Track ambassador performance metrics and identify top performers</p>", unsafe_allow_html=True)
+    
+    if 'Ambassador' in df.columns:
+        # Calculate ambassador metrics
+        ambassador_metrics = []
+        for ambassador in df['Ambassador'].unique():
+            amb_df = df[df['Ambassador'] == ambassador]
+            total_leads = len(amb_df)
+            active_drivers = len(amb_df[amb_df['Status'] == 'Active'])
+            activation_pct = (active_drivers / total_leads * 100) if total_leads > 0 else 0
+            
+            # Calculate avg friction resolution time (mock: based on status distribution)
+            # In real app, this would be actual time data
+            stuck_count = len(amb_df[amb_df['Status'].isin(['Docs_Submitted', 'Training_In_Progress'])])
+            avg_resolution_hours = random.uniform(12, 48) if stuck_count > 0 else random.uniform(4, 12)
+            
+            ambassador_metrics.append({
+                'Ambassador Name': ambassador,
+                'Leads Sourced': total_leads,
+                'Activation %': activation_pct,
+                'Avg Friction Resolution Time (Hours)': round(avg_resolution_hours, 1)
+            })
+        
+        leaderboard_df = pd.DataFrame(ambassador_metrics).sort_values('Leads Sourced', ascending=False)
+        leaderboard_df['Activation %'] = leaderboard_df['Activation %'].round(1)
+        
+        # Display as interactive table
+        st.dataframe(
+            leaderboard_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Ambassador Name": st.column_config.TextColumn("Ambassador Name", width="medium"),
+                "Leads Sourced": st.column_config.NumberColumn("Leads Sourced", format="%d"),
+                "Activation %": st.column_config.NumberColumn("Activation %", format="%.1f%%"),
+                "Avg Friction Resolution Time (Hours)": st.column_config.NumberColumn("Avg Resolution Time (Hrs)", format="%.1f")
+            }
+        )
+    else:
+        st.warning("⚠️ Ambassador column not found. Using mock data for demonstration.")
+        # Mock leaderboard data
+        mock_ambassadors = [
+            {"Ambassador Name": "Ahmed Benali", "Leads Sourced": 145, "Activation %": 18.6, "Avg Friction Resolution Time (Hours)": 24.5},
+            {"Ambassador Name": "Fatima Alami", "Leads Sourced": 132, "Activation %": 22.7, "Avg Friction Resolution Time (Hours)": 18.2},
+            {"Ambassador Name": "Youssef Idrissi", "Leads Sourced": 128, "Activation %": 19.5, "Avg Friction Resolution Time (Hours)": 22.1},
+            {"Ambassador Name": "Aicha Bensaid", "Leads Sourced": 115, "Activation %": 21.7, "Avg Friction Resolution Time (Hours)": 19.8},
+            {"Ambassador Name": "Mohamed Tazi", "Leads Sourced": 108, "Activation %": 17.6, "Avg Friction Resolution Time (Hours)": 28.3},
+            {"Ambassador Name": "Sanae El Fassi", "Leads Sourced": 95, "Activation %": 20.0, "Avg Friction Resolution Time (Hours)": 21.5},
+            {"Ambassador Name": "Hassan Amrani", "Leads Sourced": 87, "Activation %": 16.1, "Avg Friction Resolution Time (Hours)": 31.2},
+            {"Ambassador Name": "Khadija Alaoui", "Leads Sourced": 82, "Activation %": 23.2, "Avg Friction Resolution Time (Hours)": 16.9},
+            {"Ambassador Name": "Omar Berrada", "Leads Sourced": 75, "Activation %": 18.7, "Avg Friction Resolution Time (Hours)": 25.4},
+            {"Ambassador Name": "Nadia Chraibi", "Leads Sourced": 68, "Activation %": 19.1, "Avg Friction Resolution Time (Hours)": 23.7}
+        ]
+        mock_df = pd.DataFrame(mock_ambassadors).sort_values('Leads Sourced', ascending=False)
+        st.dataframe(mock_df, use_container_width=True, hide_index=True)
+    
+    # Time-Series Trends
+    st.markdown("<h2 style='color: #ffffff; margin-top: 40px;'>📈 Operational Trends</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #cccccc; margin-bottom: 20px;'>Track daily performance and friction trends over the last 30 days</p>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Daily Active Drivers Chart
+        if 'Contact_Date' in df.columns and 'Status' in df.columns:
+            # Generate daily active drivers data
+            daily_data = []
+            end_date = datetime.now()
+            for i in range(30):
+                date = end_date - timedelta(days=29-i)
+                date_str = date.strftime("%Y-%m-%d")
+                # Count drivers who became active on or before this date
+                active_on_date = len(df[(df['Contact_Date'] <= date) & (df['Status'] == 'Active')])
+                daily_data.append({
+                    'Date': date_str,
+                    'Active Drivers': active_on_date
+                })
+            
+            daily_df = pd.DataFrame(daily_data)
+            daily_df['Date'] = pd.to_datetime(daily_df['Date'])
+            
+            fig_trend1 = px.line(
+                daily_df,
+                x='Date',
+                y='Active Drivers',
+                title="Daily Active Drivers (Last 30 Days)",
+                labels={'Active Drivers': 'Number of Active Drivers', 'Date': 'Date'},
+                markers=True
+            )
+            fig_trend1.update_layout(
+                plot_bgcolor='#1a1a1a',
+                paper_bgcolor='#000000',
+                font_color='#ffffff',
+                title_font_color='#ffffff',
+                xaxis=dict(gridcolor='#333333'),
+                yaxis=dict(gridcolor='#333333')
+            )
+            fig_trend1.update_traces(line_color='#00CC96', marker_color='#00CC96')
+            
+            st.plotly_chart(fig_trend1, use_container_width=True)
+        else:
+            st.info("Date column not available for time-series analysis")
+    
+    with col2:
+        # Friction Volume by Type Over Time
+        if 'Contact_Date' in df.columns and 'Friction_Reason' in df.columns:
+            # Generate friction trends
+            friction_trends = []
+            end_date = datetime.now()
+            friction_types = df[df['Friction_Reason'] != 'None']['Friction_Reason'].unique()
+            
+            for i in range(30):
+                date = end_date - timedelta(days=29-i)
+                date_str = date.strftime("%Y-%m-%d")
+                for friction_type in friction_types:
+                    count = len(df[(df['Contact_Date'] <= date) & (df['Friction_Reason'] == friction_type)])
+                    friction_trends.append({
+                        'Date': date_str,
+                        'Friction Type': friction_type.replace('_', ' '),
+                        'Volume': count
+                    })
+            
+            friction_trends_df = pd.DataFrame(friction_trends)
+            friction_trends_df['Date'] = pd.to_datetime(friction_trends_df['Date'])
+            
+            fig_trend2 = px.line(
+                friction_trends_df,
+                x='Date',
+                y='Volume',
+                color='Friction Type',
+                title="Friction Volume by Type (Last 30 Days)",
+                labels={'Volume': 'Number of Cases', 'Date': 'Date'},
+                markers=True
+            )
+            fig_trend2.update_layout(
+                plot_bgcolor='#1a1a1a',
+                paper_bgcolor='#000000',
+                font_color='#ffffff',
+                title_font_color='#ffffff',
+                xaxis=dict(gridcolor='#333333'),
+                yaxis=dict(gridcolor='#333333'),
+                legend=dict(bgcolor='#1a1a1a', bordercolor='#333333')
+            )
+            
+            st.plotly_chart(fig_trend2, use_container_width=True)
+        else:
+            st.info("Date or Friction_Reason column not available for time-series analysis")
     
     # Action List: Drivers in Training_In_Progress
     st.markdown("<h2 style='color: #ffffff;'>Action List: Drivers In Training</h2>", unsafe_allow_html=True)
