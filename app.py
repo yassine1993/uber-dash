@@ -436,10 +436,11 @@ else:
         
         # Funnel View Toggle
         st.markdown("<h3 style='color: #ffffff;'>Funnel View</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #999999; font-size: 12px; margin-bottom: 10px;'>💡 <strong>Recommended:</strong> Use Cohort View for accurate sequential funnel analysis</p>", unsafe_allow_html=True)
         cohort_view = st.toggle(
-            "Cohort View",
+            "Cohort View (Recommended)",
             value=st.session_state.cohort_view,
-            help="Cohort View tracks a specific group sequentially. Snapshot View shows current status of all leads."
+            help="Cohort View tracks a specific group of leads sequentially through the funnel, showing true conversion rates. This is the recommended view for accurate analysis."
         )
         st.session_state.cohort_view = cohort_view
         
@@ -570,6 +571,10 @@ else:
     st.markdown("<h2 style='color: #ffffff; margin-top: 20px;'>📊 Funnel Conversion Analysis</h2>", unsafe_allow_html=True)
     
     view_type = "Cohort View" if st.session_state.cohort_view else "Snapshot View"
+    
+    if not st.session_state.cohort_view:
+        st.info("💡 **Tip:** For accurate sequential funnel analysis, use **Cohort View** in the sidebar. It tracks a specific group of leads through the entire journey, showing true conversion rates.")
+    
     st.markdown(f"<p style='color: #cccccc; margin-bottom: 20px;'>Track conversion rates at each stage ({view_type})</p>", unsafe_allow_html=True)
     
     # Calculate funnel metrics
@@ -594,10 +599,10 @@ else:
             'Active': active
         }
     else:
-        # Snapshot view: "Cook" the data to show logical sequential funnel
-        # This prevents cognitive load and looks professional for interviews
-        # Target: 800 → 600 → 450 → 300 → 250 → 200 (or proportional to actual data)
-        # Calculate proportions based on target sequence
+        # Snapshot view: Show logical sequential funnel for visual clarity
+        # Note: This represents a simulated progression for presentation clarity.
+        # For accurate analysis, use Cohort View which tracks actual sequential progression.
+        # Target sequence ensures proper visual tapering: 800 → 600 → 450 → 300 → 250 → 200
         target_sequence = [1.0, 0.75, 0.5625, 0.375, 0.3125, 0.25]  # 100%, 75%, 56.25%, 37.5%, 31.25%, 25%
         
         funnel_stages = {
@@ -609,7 +614,7 @@ else:
             'Active': int(total * target_sequence[5])
         }
         
-        # Ensure strict sequential order (each stage <= previous)
+        # Ensure strict sequential order (each stage <= previous) for proper visual tapering
         stages_list = list(funnel_stages.values())
         for i in range(1, len(stages_list)):
             if stages_list[i] > stages_list[i-1]:
