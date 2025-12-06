@@ -543,6 +543,7 @@ else:
         # Create funnel shape
         for i, (stage, count) in enumerate(zip(stages, counts)):
             width = (count / max_count) * 100 if max_count > 0 else 0
+            cumulative_cr = funnel_df.iloc[i]['Cumulative Conversion (%)']
             fig_funnel.add_trace(go.Bar(
                 y=[stage],
                 x=[count],
@@ -551,7 +552,6 @@ else:
                     color=['#636EFA', '#EF553B', '#FFA15A', '#FF6B35', '#00CC96', '#00CC96'][i],
                     line=dict(color='#333333', width=1)
                 ),
-                cumulative_cr = funnel_df.iloc[i]['Cumulative Conversion (%)']
                 text=[f"{count:,}<br>({cumulative_cr:.1f}% of total)"],
                 textposition='inside',
                 name=stage
