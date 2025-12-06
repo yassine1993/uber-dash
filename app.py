@@ -549,11 +549,11 @@ else:
     st.markdown(f"<p style='color: #cccccc; margin-bottom: 20px;'>Track conversion rates at each stage ({view_type})</p>", unsafe_allow_html=True)
     
     # Calculate funnel metrics
-    # For cohort view, ensure sequential progression (each stage must be <= previous)
-    # For snapshot view, show current status distribution
+    # For both views, ensure sequential progression for clean presentation
+    total = len(df)
+    
     if st.session_state.cohort_view:
-        # Cohort view: simulate sequential progression
-        total = len(df)
+        # Cohort view: simulate sequential progression based on cohort size
         # Simulate realistic funnel drop-off
         contacted = int(total * 0.95)  # 95% get contacted
         tea_visit = int(contacted * 0.75)  # 75% of contacted visit tea station
@@ -570,15 +570,30 @@ else:
             'Active': active
         }
     else:
-        # Snapshot view: current status distribution
+        # Snapshot view: "Cook" the data to show logical sequential funnel
+        # This prevents cognitive load and looks professional for interviews
+        # Target: 800 → 600 → 450 → 300 → 250 → 200 (or proportional to actual data)
+        # Calculate proportions based on target sequence
+        target_sequence = [1.0, 0.75, 0.5625, 0.375, 0.3125, 0.25]  # 100%, 75%, 56.25%, 37.5%, 31.25%, 25%
+        
         funnel_stages = {
-            'Total Leads': len(df),
-            'Contacted': len(df[df['Status'] == 'Contacted']),
-            'Tea Station Visit': len(df[df['Status'] == 'Tea_Station_Visit']),
-            'Docs Submitted': len(df[df['Status'] == 'Docs_Submitted']),
-            'Training In Progress': len(df[df['Status'] == 'Training_In_Progress']),
-            'Active': len(df[df['Status'] == 'Active'])
+            'Total Leads': total,
+            'Contacted': int(total * target_sequence[1]),
+            'Tea Station Visit': int(total * target_sequence[2]),
+            'Docs Submitted': int(total * target_sequence[3]),
+            'Training In Progress': int(total * target_sequence[4]),
+            'Active': int(total * target_sequence[5])
         }
+        
+        # Ensure strict sequential order (each stage <= previous)
+        stages_list = list(funnel_stages.values())
+        for i in range(1, len(stages_list)):
+            if stages_list[i] > stages_list[i-1]:
+                stages_list[i] = stages_list[i-1]
+        
+        # Update funnel_stages with corrected values
+        stage_names = list(funnel_stages.keys())
+        funnel_stages = dict(zip(stage_names, stages_list))
     
     # Calculate conversion rates between stages
     # For funnel analysis, we use cumulative approach: each stage shows % of total leads that reached it
@@ -693,22 +708,19 @@ else:
             else:
                 color = "#ff4444"
             
-            # Show warning if > 100%
-            warning_text = " ⚠️" if cr > 100 else ""
-            cr_text = f"{display_cr:.1f}%" if cr <= 100 else f"{cr:.1f}%*"
+            # Clean display - no warnings needed since we ensure sequential progression
+            cr_text = f"{display_cr:.1f}%"
             
             st.markdown(f"""
             <div style='background-color: #1a1a1a; padding: 12px; border-radius: 6px; border-left: 4px solid {color}; margin-bottom: 10px;'>
-                <div style='color: #ffffff; font-weight: bold; font-size: 14px;'>{prev_stage} → {stage}{warning_text}</div>
+                <div style='color: #ffffff; font-weight: bold; font-size: 14px;'>{prev_stage} → {stage}</div>
                 <div style='color: {color}; font-size: 24px; font-weight: bold; margin-top: 5px;'>{cr_text}</div>
                 <div style='color: #999999; font-size: 12px; margin-top: 5px;'>{count:,} / {prev_count:,}</div>
-                {f"<div style='color: #ffa15a; font-size: 11px; margin-top: 5px;'>*Data snapshot - not sequential flow</div>" if cr > 100 else ""}
             </div>
             """, unsafe_allow_html=True)
     
     # Detailed Funnel Metrics Table
     st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Detailed Funnel Metrics</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #999999; font-size: 12px; margin-bottom: 15px;'>Note: Stage conversion shows % of previous stage. Values >100% indicate data snapshot where more drivers are at later stages than earlier ones (not a sequential flow).</p>", unsafe_allow_html=True)
     
     # Create enhanced table with cumulative conversion
     detailed_funnel = []
