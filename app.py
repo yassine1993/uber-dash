@@ -83,6 +83,10 @@ def get_demo_data():
     
     statuses = ["Contacted", "Tea_Station_Visit", "Docs_Submitted", "Training_In_Progress", "Active"]
     
+    # Lead sources
+    lead_sources = ["Performance_Marketing_FB", "Performance_Marketing_TikTok", "Performance_Marketing_Google", 
+                    "Referral", "Physical_Tent", "Physical_Hub"]
+    
     # Friction reasons based on status
     friction_mapping = {
         "Contacted": ["Not_Interested", "Trust_Issue", "None"],
@@ -94,11 +98,13 @@ def get_demo_data():
     
     # Weight the data to be more realistic
     status_weights = [0.20, 0.20, 0.25, 0.20, 0.15]  # Distribution across all statuses
+    lead_source_weights = [0.25, 0.20, 0.15, 0.15, 0.15, 0.10]  # Distribution of lead sources
     
     data = []
     for i in range(800):
         station = random.choice(stations)
         status = random.choices(statuses, weights=status_weights)[0]
+        lead_source = random.choices(lead_sources, weights=lead_source_weights)[0]
         
         # Assign friction reason based on status
         available_frictions = friction_mapping[status]
@@ -108,7 +114,8 @@ def get_demo_data():
         data.append({
             "Station": station,
             "Status": status,
-            "Friction_Reason": friction_reason
+            "Friction_Reason": friction_reason,
+            "Lead_Source": lead_source
         })
     
     return pd.DataFrame(data)
@@ -119,7 +126,8 @@ def get_csv_template():
     template_data = {
         "Station": ["Bab Doukkala", "Airport", "Gueliz", "Medina", "Hivernage", "Agdal"],
         "Status": ["Contacted", "Tea_Station_Visit", "Docs_Submitted", "Training_In_Progress", "Active", "Contacted"],
-        "Friction_Reason": ["None", "Permit_Scan_Fail", "CIN_Expired", "GPS_Confusion", "None", "Not_Interested"]
+        "Friction_Reason": ["None", "Permit_Scan_Fail", "CIN_Expired", "GPS_Confusion", "None", "Not_Interested"],
+        "Lead_Source": ["Performance_Marketing_FB", "Physical_Tent", "Referral", "Performance_Marketing_TikTok", "Physical_Hub", "Performance_Marketing_Google"]
     }
     return pd.DataFrame(template_data)
 
@@ -260,6 +268,13 @@ if not st.session_state.data_loaded:
                             <li>Active: <code>None</code></li>
                         </ul>
                     </li>
+                    <li><strong>Lead_Source</strong> - Source of the lead:
+                        <ul style='margin-top: 5px;'>
+                            <li>Performance Marketing: <code>Performance_Marketing_FB</code>, <code>Performance_Marketing_TikTok</code>, <code>Performance_Marketing_Google</code></li>
+                            <li>Referral: <code>Referral</code></li>
+                            <li>Physical: <code>Physical_Tent</code>, <code>Physical_Hub</code></li>
+                        </ul>
+                    </li>
                 </ul>
                 <p style='color: #cccccc; margin-top: 15px;'>
                     <strong>Note:</strong> Column names are case-sensitive and must match exactly.
@@ -286,7 +301,7 @@ if not st.session_state.data_loaded:
         uploaded_file = st.file_uploader(
             "Upload CSV File",
             type=['csv'],
-            help="Upload a CSV file with columns: Station, Status, Friction_Reason",
+            help="Upload a CSV file with columns: Station, Status, Friction_Reason, Lead_Source",
             key="file_uploader"
         )
         
@@ -294,7 +309,7 @@ if not st.session_state.data_loaded:
             try:
                 df = pd.read_csv(uploaded_file)
                 # Validate required columns
-                required_cols = ['Station', 'Status', 'Friction_Reason']
+                required_cols = ['Station', 'Status', 'Friction_Reason', 'Lead_Source']
                 if not all(col in df.columns for col in required_cols):
                     st.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
                     st.info(f"Your CSV has columns: {', '.join(df.columns.tolist())}")
@@ -378,11 +393,13 @@ else:
     # KPI Metrics
     st.markdown("<h2 style='color: #ffffff; margin-top: 20px;'>Key Performance Indicators</h2>", unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     total_leads = len(df)
     in_training = len(df[df['Status'] == 'Training_In_Progress'])
     active_drivers = len(df[df['Status'] == 'Active'])
+    conversion_rate = (active_drivers / total_leads * 100) if total_leads > 0 else 0
+    threshold = 20.0
     
     # Get top friction reason (excluding 'None')
     friction_counts = df[df['Friction_Reason'] != 'None']['Friction_Reason'].value_counts()
@@ -412,6 +429,21 @@ else:
         )
     
     with col4:
+        # Conversion Rate with threshold comparison
+        threshold_met = conversion_rate >= threshold
+        border_color = "#00cc96" if threshold_met else "#ff4444"
+        status_text = "✅ Above" if threshold_met else "❌ Below"
+        status_color = "#00cc96" if threshold_met else "#ff4444"
+        
+        st.markdown(f"""
+        <div style='background-color: #1a1a1a; padding: 15px; border-radius: 8px; border: 2px solid {border_color};'>
+            <div style='color: #cccccc; font-size: 14px; margin-bottom: 5px;'>Conversion Rate</div>
+            <div style='color: {status_color}; font-size: 32px; font-weight: bold;'>{conversion_rate:.1f}%</div>
+            <div style='color: #999999; font-size: 12px; margin-top: 5px;'>Threshold: {threshold}% {status_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
         st.metric(
             label="#1 Friction Reason",
             value=top_friction.replace('_', ' '),
@@ -482,6 +514,132 @@ else:
     fig2.update_traces(marker_color='#666666')
     
     st.plotly_chart(fig2, use_container_width=True)
+    
+    # Chart 3: Lead Source Breakdown
+    st.markdown("<h2 style='color: #ffffff;'>Lead Source Breakdown</h2>", unsafe_allow_html=True)
+    
+    # Check if Lead_Source column exists
+    if 'Lead_Source' in df.columns:
+        # Categorize lead sources
+        def categorize_lead_source(source):
+            if 'Performance_Marketing' in str(source):
+                return 'Performance Marketing'
+            elif source == 'Referral':
+                return 'Referral'
+            elif 'Physical' in str(source):
+                return 'Physical (Tents/Hubs)'
+            else:
+                return 'Other'
+        
+        df['Lead_Category'] = df['Lead_Source'].apply(categorize_lead_source)
+        lead_source_counts = df['Lead_Category'].value_counts().reset_index()
+        lead_source_counts.columns = ['Lead_Category', 'Count']
+        
+        # Create pie chart for overall breakdown
+        fig3 = px.pie(
+            lead_source_counts,
+            values='Count',
+            names='Lead_Category',
+            title="Lead Source Distribution",
+            color_discrete_map={
+                'Performance Marketing': '#636EFA',
+                'Referral': '#00CC96',
+                'Physical (Tents/Hubs)': '#FF6B35',
+                'Other': '#999999'
+            }
+        )
+        fig3.update_layout(
+            plot_bgcolor='#1a1a1a',
+            paper_bgcolor='#000000',
+            font_color='#ffffff',
+            title_font_color='#ffffff',
+            legend=dict(bgcolor='#1a1a1a', bordercolor='#333333')
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(fig3, use_container_width=True)
+        
+        # Detailed breakdown by specific source
+        detailed_source_counts = df['Lead_Source'].value_counts().reset_index()
+        detailed_source_counts.columns = ['Lead_Source', 'Count']
+        detailed_source_counts['Lead_Source'] = detailed_source_counts['Lead_Source'].str.replace('_', ' ')
+        
+        fig4 = px.bar(
+            detailed_source_counts,
+            x='Lead_Source',
+            y='Count',
+            title="Detailed Lead Source Breakdown",
+            labels={'Count': 'Number of Leads', 'Lead_Source': 'Lead Source'},
+            color='Count',
+            color_continuous_scale='Blues'
+        )
+        fig4.update_layout(
+            plot_bgcolor='#1a1a1a',
+            paper_bgcolor='#000000',
+            font_color='#ffffff',
+            title_font_color='#ffffff',
+            xaxis=dict(gridcolor='#333333'),
+            yaxis=dict(gridcolor='#333333'),
+            showlegend=False
+        )
+        fig4.update_traces(marker_color='#4A90E2')
+        
+        with col2:
+            st.plotly_chart(fig4, use_container_width=True)
+        
+        # Conversion rate by lead source
+        st.markdown("<h3 style='color: #ffffff; margin-top: 20px;'>Conversion Rate by Lead Source</h3>", unsafe_allow_html=True)
+        
+        conversion_by_source = []
+        for source in df['Lead_Source'].unique():
+            source_df = df[df['Lead_Source'] == source]
+            source_total = len(source_df)
+            source_active = len(source_df[source_df['Status'] == 'Active'])
+            source_conversion = (source_active / source_total * 100) if source_total > 0 else 0
+            conversion_by_source.append({
+                'Lead_Source': source.replace('_', ' '),
+                'Total_Leads': source_total,
+                'Active_Drivers': source_active,
+                'Conversion_Rate': source_conversion
+            })
+        
+        conversion_df = pd.DataFrame(conversion_by_source).sort_values('Conversion_Rate', ascending=False)
+        
+        fig5 = px.bar(
+            conversion_df,
+            x='Lead_Source',
+            y='Conversion_Rate',
+            title="Conversion Rate by Lead Source (%)",
+            labels={'Conversion_Rate': 'Conversion Rate (%)', 'Lead_Source': 'Lead Source'},
+            color='Conversion_Rate',
+            color_continuous_scale='RdYlGn'
+        )
+        fig5.add_hline(y=threshold, line_dash="dash", line_color="#ff4444", 
+                      annotation_text=f"Threshold: {threshold}%", 
+                      annotation_position="right")
+        fig5.update_layout(
+            plot_bgcolor='#1a1a1a',
+            paper_bgcolor='#000000',
+            font_color='#ffffff',
+            title_font_color='#ffffff',
+            xaxis=dict(gridcolor='#333333'),
+            yaxis=dict(gridcolor='#333333'),
+            showlegend=False
+        )
+        fig5.update_traces(marker_color='#00CC96')
+        
+        st.plotly_chart(fig5, use_container_width=True)
+        
+        # Table showing detailed conversion metrics
+        st.markdown("<h4 style='color: #ffffff; margin-top: 20px;'>Detailed Conversion Metrics by Lead Source</h4>", unsafe_allow_html=True)
+        conversion_df['Conversion_Rate'] = conversion_df['Conversion_Rate'].round(2)
+        conversion_df['Above_Threshold'] = conversion_df['Conversion_Rate'] >= threshold
+        conversion_df.columns = ['Lead Source', 'Total Leads', 'Active Drivers', 'Conversion Rate (%)', 'Above Threshold']
+        conversion_df['Above Threshold'] = conversion_df['Above Threshold'].map({True: '✅ Yes', False: '❌ No'})
+        st.dataframe(conversion_df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("⚠️ Lead_Source column not found in data. Please upload a CSV with Lead_Source column.")
     
     # Action List: Drivers in Training_In_Progress
     st.markdown("<h2 style='color: #ffffff;'>Action List: Drivers In Training</h2>", unsafe_allow_html=True)

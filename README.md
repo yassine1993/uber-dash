@@ -6,7 +6,8 @@ A professional Streamlit dashboard application for tracking driver friction poin
 
 - **File Upload**: Drag-and-drop CSV file uploader in the sidebar
 - **Smart Fallback**: Automatic demo data generation (800 rows) if no file is uploaded
-- **KPI Dashboard**: Key metrics including Total Leads, In Training, Active Drivers, and Top Friction Reason
+- **KPI Dashboard**: Key metrics including Total Leads, In Training, Active Drivers, Conversion Rate (with 20% threshold), and Top Friction Reason
+- **Lead Source Analysis**: Breakdown of leads by source (Performance Marketing, Referral, Physical) with conversion rates
 - **Visualizations**: 
   - Funnel Volume by Station (bar chart colored by status)
   - Top Friction Reasons (horizontal bar chart)
@@ -23,6 +24,10 @@ The CSV file should contain the following columns:
   - Docs: `Permit_Scan_Fail`, `CIN_Expired`, `None`
   - Training: `GPS_Confusion`, `Failed_Tech_Quiz`, `Skipped_Session`, `None`
   - Active: `None`
+- `Lead_Source`: Source of the lead:
+  - Performance Marketing: `Performance_Marketing_FB`, `Performance_Marketing_TikTok`, `Performance_Marketing_Google`
+  - Referral: `Referral`
+  - Physical: `Physical_Tent`, `Physical_Hub`
 
 ## Local Development
 
