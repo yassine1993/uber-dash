@@ -466,6 +466,143 @@ else:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
+    # Funnel Conversion Rate Analysis
+    st.markdown("<h2 style='color: #ffffff; margin-top: 20px;'>📊 Funnel Conversion Analysis</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #cccccc; margin-bottom: 20px;'>Track conversion rates at each stage of the driver onboarding funnel</p>", unsafe_allow_html=True)
+    
+    # Calculate funnel metrics
+    funnel_stages = {
+        'Total Leads': len(df),
+        'Contacted': len(df[df['Status'] == 'Contacted']),
+        'Tea Station Visit': len(df[df['Status'] == 'Tea_Station_Visit']),
+        'Docs Submitted': len(df[df['Status'] == 'Docs_Submitted']),
+        'Training In Progress': len(df[df['Status'] == 'Training_In_Progress']),
+        'Active': len(df[df['Status'] == 'Active'])
+    }
+    
+    # Calculate conversion rates between stages
+    funnel_data = []
+    previous_count = funnel_stages['Total Leads']
+    
+    for stage, count in funnel_stages.items():
+        if stage == 'Total Leads':
+            conversion_rate = 100.0  # Starting point
+            drop_off = 0.0
+        else:
+            conversion_rate = (count / previous_count * 100) if previous_count > 0 else 0
+            drop_off = ((previous_count - count) / previous_count * 100) if previous_count > 0 else 0
+        
+        funnel_data.append({
+            'Stage': stage,
+            'Count': count,
+            'Conversion Rate (%)': conversion_rate,
+            'Drop-off Rate (%)': drop_off
+        })
+        previous_count = count
+    
+    funnel_df = pd.DataFrame(funnel_data)
+    
+    # Visual Funnel Chart
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Create funnel visualization
+        fig_funnel = go.Figure()
+        
+        stages = funnel_df['Stage'].tolist()
+        counts = funnel_df['Count'].tolist()
+        max_count = max(counts)
+        
+        # Create funnel shape
+        for i, (stage, count) in enumerate(zip(stages, counts)):
+            width = (count / max_count) * 100 if max_count > 0 else 0
+            fig_funnel.add_trace(go.Bar(
+                y=[stage],
+                x=[count],
+                orientation='h',
+                marker=dict(
+                    color=['#636EFA', '#EF553B', '#FFA15A', '#FF6B35', '#00CC96', '#00CC96'][i],
+                    line=dict(color='#333333', width=1)
+                ),
+                text=[f"{count:,}<br>({funnel_df.iloc[i]['Conversion Rate (%)']:.1f}%)"],
+                textposition='inside',
+                name=stage
+            ))
+        
+        fig_funnel.update_layout(
+            title="Funnel Visualization - Volume at Each Stage",
+            xaxis_title="Number of Drivers",
+            yaxis_title="Stage",
+            plot_bgcolor='#1a1a1a',
+            paper_bgcolor='#000000',
+            font_color='#ffffff',
+            title_font_color='#ffffff',
+            xaxis=dict(gridcolor='#333333'),
+            yaxis=dict(gridcolor='#333333'),
+            height=400,
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig_funnel, use_container_width=True)
+    
+    with col2:
+        # Conversion rate metrics
+        st.markdown("<h4 style='color: #ffffff; margin-bottom: 15px;'>Stage Conversion Rates</h4>", unsafe_allow_html=True)
+        
+        for i in range(1, len(funnel_df)):
+            stage = funnel_df.iloc[i]['Stage']
+            prev_stage = funnel_df.iloc[i-1]['Stage']
+            cr = funnel_df.iloc[i]['Conversion Rate (%)']
+            count = funnel_df.iloc[i]['Count']
+            prev_count = funnel_df.iloc[i-1]['Count']
+            
+            # Color based on conversion rate
+            if cr >= 80:
+                color = "#00cc96"
+            elif cr >= 60:
+                color = "#ffa15a"
+            else:
+                color = "#ff4444"
+            
+            st.markdown(f"""
+            <div style='background-color: #1a1a1a; padding: 12px; border-radius: 6px; border-left: 4px solid {color}; margin-bottom: 10px;'>
+                <div style='color: #ffffff; font-weight: bold; font-size: 14px;'>{prev_stage} → {stage}</div>
+                <div style='color: {color}; font-size: 24px; font-weight: bold; margin-top: 5px;'>{cr:.1f}%</div>
+                <div style='color: #999999; font-size: 12px; margin-top: 5px;'>{count:,} / {prev_count:,}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Detailed Funnel Metrics Table
+    st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Detailed Funnel Metrics</h3>", unsafe_allow_html=True)
+    
+    # Create enhanced table with cumulative conversion
+    detailed_funnel = []
+    total_leads = funnel_stages['Total Leads']
+    
+    for i, row in funnel_df.iterrows():
+        stage = row['Stage']
+        count = row['Count']
+        stage_cr = row['Conversion Rate (%)']
+        cumulative_cr = (count / total_leads * 100) if total_leads > 0 else 0
+        
+        detailed_funnel.append({
+            'Stage': stage,
+            'Volume': count,
+            'Stage Conversion Rate (%)': stage_cr,
+            'Cumulative Conversion Rate (%)': cumulative_cr,
+            'Drop-off Rate (%)': row['Drop-off Rate (%)']
+        })
+    
+    detailed_funnel_df = pd.DataFrame(detailed_funnel)
+    detailed_funnel_df['Volume'] = detailed_funnel_df['Volume'].apply(lambda x: f"{x:,}")
+    detailed_funnel_df['Stage Conversion Rate (%)'] = detailed_funnel_df['Stage Conversion Rate (%)'].round(1)
+    detailed_funnel_df['Cumulative Conversion Rate (%)'] = detailed_funnel_df['Cumulative Conversion Rate (%)'].round(1)
+    detailed_funnel_df['Drop-off Rate (%)'] = detailed_funnel_df['Drop-off Rate (%)'].round(1)
+    
+    st.dataframe(detailed_funnel_df, use_container_width=True, hide_index=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     # Chart 1: Funnel Volume by Station (colored by Status)
     st.markdown("<h2 style='color: #ffffff;'>Funnel Volume by Station</h2>", unsafe_allow_html=True)
     
