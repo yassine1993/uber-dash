@@ -206,6 +206,19 @@ if not st.session_state.data_loaded:
         st.markdown("")
         st.markdown("**Active:** The driver has successfully completed their first paid trip on the platform within the last 7 days. *Goal: Retention and \"Captain's Club\" entry.*")
         
+        st.markdown("<hr style='border-color: #333333; margin: 20px 0;'>", unsafe_allow_html=True)
+        
+        # Key Metrics Definitions
+        st.markdown("""
+        <div style='background-color: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333333; margin: 20px 0;'>
+            <h3 style='color: #ffffff; margin-bottom: 15px;'>📊 Key Metrics Definitions</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("**Conversion Rate:** The percentage of total leads that successfully complete onboarding and become Active drivers. Calculated as (Active Drivers / Total Leads) × 100%. Our target threshold is 20% - meaning at least 1 in 5 leads should convert to active drivers.")
+        st.markdown("")
+        st.markdown("**Thiqqa Score (SLA Breach %):** Measures the percentage of drivers who are stuck beyond their Service Level Agreement (SLA) timeframe. It represents drivers who have not progressed to Active status within the expected timeline. Lower scores are better - a lower Thiqqa Score indicates fewer drivers are experiencing delays in the onboarding process.")
+        
         st.markdown("<hr style='border-color: #333333;'>", unsafe_allow_html=True)
     
     # Welcome Section
