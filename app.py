@@ -96,15 +96,29 @@ def get_demo_data():
         "Active": ["None"]
     }
     
-    # Weight the data to be more realistic
-    status_weights = [0.20, 0.20, 0.25, 0.20, 0.15]  # Distribution across all statuses
+    # Status weights vary by lead source to reflect different conversion rates
+    # Referral: ~53% conversion rate (Active status gets 53% weight)
+    # Other sources: ~15-20% conversion rate (Active status gets 15-20% weight)
+    status_weights_by_source = {
+        "Referral": [0.10, 0.12, 0.15, 0.10, 0.53],  # High conversion: 53% Active
+        "Physical_Tent": [0.15, 0.20, 0.25, 0.20, 0.20],  # 20% Active
+        "Physical_Hub": [0.15, 0.20, 0.25, 0.20, 0.20],  # 20% Active
+        "Performance_Marketing_FB": [0.20, 0.20, 0.25, 0.20, 0.15],  # 15% Active
+        "Performance_Marketing_TikTok": [0.20, 0.20, 0.25, 0.20, 0.15],  # 15% Active
+        "Performance_Marketing_Google": [0.20, 0.20, 0.25, 0.20, 0.15],  # 15% Active
+    }
+    
+    # Distribution of lead sources
     lead_source_weights = [0.25, 0.20, 0.15, 0.15, 0.15, 0.10]  # Distribution of lead sources
     
     data = []
     for i in range(800):
         station = random.choice(stations)
-        status = random.choices(statuses, weights=status_weights)[0]
         lead_source = random.choices(lead_sources, weights=lead_source_weights)[0]
+        
+        # Assign status based on lead source (to reflect different conversion rates)
+        status_weights = status_weights_by_source[lead_source]
+        status = random.choices(statuses, weights=status_weights)[0]
         
         # Assign friction reason based on status
         available_frictions = friction_mapping[status]
