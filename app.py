@@ -481,24 +481,51 @@ else:
     }
     
     # Calculate conversion rates between stages
+    # For funnel analysis, we use cumulative approach: each stage shows % of total leads that reached it
     funnel_data = []
-    previous_count = funnel_stages['Total Leads']
+    total_leads = funnel_stages['Total Leads']
     
-    for stage, count in funnel_stages.items():
+    # Define the funnel progression order
+    funnel_order = ['Total Leads', 'Contacted', 'Tea Station Visit', 'Docs Submitted', 'Training In Progress', 'Active']
+    
+    previous_stage_count = total_leads
+    previous_stage_name = 'Total Leads'
+    
+    for stage in funnel_order:
+        count = funnel_stages[stage]
+        
         if stage == 'Total Leads':
             conversion_rate = 100.0  # Starting point
+            stage_conversion_rate = 100.0  # 100% of leads are leads
             drop_off = 0.0
         else:
-            conversion_rate = (count / previous_count * 100) if previous_count > 0 else 0
-            drop_off = ((previous_count - count) / previous_count * 100) if previous_count > 0 else 0
+            # Cumulative conversion: what % of total leads reached this stage
+            cumulative_conversion = (count / total_leads * 100) if total_leads > 0 else 0
+            
+            # Stage-to-stage conversion: of those who reached previous stage, what % reached this stage
+            # Only calculate if previous stage has people (to avoid >100% issues)
+            if previous_stage_count > 0 and count <= previous_stage_count:
+                stage_conversion_rate = (count / previous_stage_count * 100)
+            elif previous_stage_count == 0:
+                stage_conversion_rate = 0.0
+            else:
+                # If count > previous_count, it means data doesn't follow strict funnel
+                # Use cumulative instead
+                stage_conversion_rate = cumulative_conversion
+            
+            conversion_rate = cumulative_conversion
+            drop_off = ((previous_stage_count - count) / previous_stage_count * 100) if previous_stage_count > 0 else 0
         
         funnel_data.append({
             'Stage': stage,
             'Count': count,
-            'Conversion Rate (%)': conversion_rate,
+            'Cumulative Conversion (%)': conversion_rate,
+            'Stage Conversion (%)': stage_conversion_rate if stage != 'Total Leads' else 100.0,
             'Drop-off Rate (%)': drop_off
         })
-        previous_count = count
+        
+        previous_stage_count = count
+        previous_stage_name = stage
     
     funnel_df = pd.DataFrame(funnel_data)
     
@@ -524,7 +551,8 @@ else:
                     color=['#636EFA', '#EF553B', '#FFA15A', '#FF6B35', '#00CC96', '#00CC96'][i],
                     line=dict(color='#333333', width=1)
                 ),
-                text=[f"{count:,}<br>({funnel_df.iloc[i]['Conversion Rate (%)']:.1f}%)"],
+                cumulative_cr = funnel_df.iloc[i]['Cumulative Conversion (%)']
+                text=[f"{count:,}<br>({cumulative_cr:.1f}% of total)"],
                 textposition='inside',
                 name=stage
             ))
@@ -556,47 +584,56 @@ else:
             count = funnel_df.iloc[i]['Count']
             prev_count = funnel_df.iloc[i-1]['Count']
             
-            # Color based on conversion rate
-            if cr >= 80:
+            # Color based on conversion rate (cap at 100% for display)
+            display_cr = min(cr, 100.0)  # Cap at 100% for display
+            if display_cr >= 80:
                 color = "#00cc96"
-            elif cr >= 60:
+            elif display_cr >= 60:
                 color = "#ffa15a"
             else:
                 color = "#ff4444"
             
+            # Show warning if > 100%
+            warning_text = " ⚠️" if cr > 100 else ""
+            cr_text = f"{display_cr:.1f}%" if cr <= 100 else f"{cr:.1f}%*"
+            
             st.markdown(f"""
             <div style='background-color: #1a1a1a; padding: 12px; border-radius: 6px; border-left: 4px solid {color}; margin-bottom: 10px;'>
-                <div style='color: #ffffff; font-weight: bold; font-size: 14px;'>{prev_stage} → {stage}</div>
-                <div style='color: {color}; font-size: 24px; font-weight: bold; margin-top: 5px;'>{cr:.1f}%</div>
+                <div style='color: #ffffff; font-weight: bold; font-size: 14px;'>{prev_stage} → {stage}{warning_text}</div>
+                <div style='color: {color}; font-size: 24px; font-weight: bold; margin-top: 5px;'>{cr_text}</div>
                 <div style='color: #999999; font-size: 12px; margin-top: 5px;'>{count:,} / {prev_count:,}</div>
+                {f"<div style='color: #ffa15a; font-size: 11px; margin-top: 5px;'>*Data snapshot - not sequential flow</div>" if cr > 100 else ""}
             </div>
             """, unsafe_allow_html=True)
     
     # Detailed Funnel Metrics Table
     st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Detailed Funnel Metrics</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #999999; font-size: 12px; margin-bottom: 15px;'>Note: Stage conversion shows % of previous stage. Values >100% indicate data snapshot where more drivers are at later stages than earlier ones (not a sequential flow).</p>", unsafe_allow_html=True)
     
     # Create enhanced table with cumulative conversion
     detailed_funnel = []
-    total_leads = funnel_stages['Total Leads']
     
     for i, row in funnel_df.iterrows():
         stage = row['Stage']
         count = row['Count']
-        stage_cr = row['Conversion Rate (%)']
-        cumulative_cr = (count / total_leads * 100) if total_leads > 0 else 0
+        cumulative_cr = row['Cumulative Conversion (%)']
+        stage_cr = row['Stage Conversion (%)']
+        drop_off = row['Drop-off Rate (%)']
+        
+        # Flag if stage conversion is > 100%
+        stage_cr_display = f"{stage_cr:.1f}%" if stage_cr <= 100 else f"{stage_cr:.1f}%*"
         
         detailed_funnel.append({
             'Stage': stage,
             'Volume': count,
-            'Stage Conversion Rate (%)': stage_cr,
-            'Cumulative Conversion Rate (%)': cumulative_cr,
-            'Drop-off Rate (%)': row['Drop-off Rate (%)']
+            'Cumulative Conversion (%)': cumulative_cr,
+            'Stage Conversion (%)': stage_cr_display,
+            'Drop-off Rate (%)': drop_off
         })
     
     detailed_funnel_df = pd.DataFrame(detailed_funnel)
     detailed_funnel_df['Volume'] = detailed_funnel_df['Volume'].apply(lambda x: f"{x:,}")
-    detailed_funnel_df['Stage Conversion Rate (%)'] = detailed_funnel_df['Stage Conversion Rate (%)'].round(1)
-    detailed_funnel_df['Cumulative Conversion Rate (%)'] = detailed_funnel_df['Cumulative Conversion Rate (%)'].round(1)
+    detailed_funnel_df['Cumulative Conversion (%)'] = detailed_funnel_df['Cumulative Conversion (%)'].round(1)
     detailed_funnel_df['Drop-off Rate (%)'] = detailed_funnel_df['Drop-off Rate (%)'].round(1)
     
     st.dataframe(detailed_funnel_df, use_container_width=True, hide_index=True)
