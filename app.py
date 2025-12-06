@@ -580,7 +580,7 @@ else:
         for i in range(1, len(funnel_df)):
             stage = funnel_df.iloc[i]['Stage']
             prev_stage = funnel_df.iloc[i-1]['Stage']
-            cr = funnel_df.iloc[i]['Conversion Rate (%)']
+            cr = funnel_df.iloc[i]['Stage Conversion (%)']
             count = funnel_df.iloc[i]['Count']
             prev_count = funnel_df.iloc[i-1]['Count']
             
