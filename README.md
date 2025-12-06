@@ -43,38 +43,6 @@ streamlit run app.py
 
 The app will be available at `http://localhost:8501`
 
-## Deployment
-
-### ⚠️ Important: Netlify is NOT Suitable
-
-**Netlify cannot host Streamlit apps** because Streamlit requires a persistent server process, while Netlify is designed for static sites. If you see a `netlify.toml` file in this repo, it's included for reference only and will not work for deployment.
-
-### ✅ Recommended: Streamlit Cloud (Free & Easy)
-
-**Streamlit Cloud** is the best option for deploying Streamlit apps:
-
-1. Push your code to GitHub (already done if you're reading this)
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Sign in with your GitHub account
-4. Click "New app"
-5. Select your repository (`yassine1993/uber-dash`)
-6. Set the main file path to `app.py`
-7. Click "Deploy"
-
-Your app will be live in minutes with a URL like: `https://your-app-name.streamlit.app`
-
-### Alternative Deployment Platforms
-
-If you prefer other options:
-
-- **Render**: https://render.com (Free tier available)
-- **Railway**: https://railway.app (Free tier available)
-- **Heroku**: https://heroku.com (Paid)
-- **Fly.io**: https://fly.io (Free tier available)
-
-## Logo
-
-Place your Uber logo PNG file in the root directory (named `logo.png`, `uber.png`, or similar) and it will automatically appear in the header.
 
 ## Requirements
 
